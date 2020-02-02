@@ -44,88 +44,106 @@
 
 #include "decoder.h"
 
-static const uint8_t preamble_pattern[] = { 0xaa, 0xaa, 0xaa, 0x2d, 0xd4 };
-
-static int bresser_5in1_callback(r_device *decoder, bitbuffer_t *bitbuffer)
+static int bresser_6in1_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 {
+    uint8_t const preamble_pattern[] = {0xaa, 0xaa, 0x2d, 0xd4};
     data_t *data;
-    uint8_t msg[26];
+    uint8_t msg[20];
     uint16_t sensor_id;
     unsigned len = 0;
-
+    int humidity =0;
+    int rainraw = 0;
+    int temp_raw =0;
+    float rain = 0;
+    float temperature = 0;
     if (bitbuffer->num_rows != 1
-            || bitbuffer->bits_per_row[0] < 248
-            || bitbuffer->bits_per_row[0] > 440) {
+        || bitbuffer->bits_per_row[0] < 160
+        || bitbuffer->bits_per_row[0] > 230) {
         if (decoder->verbose > 1) {
             fprintf(stderr, "%s bit_per_row %u out of range\n", __func__, bitbuffer->bits_per_row[0]);
         }
-        return 0; // Unrecognized data
+        return DECODE_ABORT_EARLY; // Unrecognized data
     }
-
     unsigned start_pos = bitbuffer_search(bitbuffer, 0, 0,
             preamble_pattern, sizeof (preamble_pattern) * 8);
 
-    if (start_pos == bitbuffer->bits_per_row[0]) {
-        return 0;
+    if (start_pos >= bitbuffer->bits_per_row[0]) {
+     fprintf(stderr, "%s Wrong start Position !!! \n", __func__);
+        return DECODE_ABORT_LENGTH;
     }
     start_pos += sizeof (preamble_pattern) * 8;
     len = bitbuffer->bits_per_row[0] - start_pos;
-    if (((len + 7) / 8) < sizeof (msg)) {
+
+    if (len < 144) {
         if (decoder->verbose > 1) {
-            fprintf(stderr, "%s %u too short\n", __func__, len);
+            fprintf(stderr, "%s: %u too short\n", __func__, len);
         }
-        return 0; // message too short
+        return DECODE_ABORT_LENGTH; // message too short
     }
     // truncate any excessive bits
     len = MIN(len, sizeof (msg) * 8);
 
     bitbuffer_extract_bytes(bitbuffer, 0, start_pos, msg, len);
 
-    // First 13 bytes need to match inverse of last 13 bytes
-    for (unsigned col = 0; col < sizeof (msg) / 2; ++col) {
-        if ((msg[col] ^ msg[col + 13]) != 0xff) {
-            if (decoder->verbose > 1) {
-                fprintf(stderr, "%s Parity wrong at %u\n", __func__, col);
-            }
-            return 0; // message isn't correct
-        }
+    // bitrow_printf(msg, len, "%s: ", __func__);
+    
+    //rain
+
+    if (msg[12] == 0xff)
+    {
+        rain = ((((0xff-msg[13])&0x0f)*100)+((((0xff-msg[14])& 0xf0) >> 4) * 10 + ((0xff-msg[14]) & 0x0f) * 1 )) * 0.1f;
     }
 
-    sensor_id = msg[14];
+    //checksum
 
-    int temp_raw = (msg[20] & 0x0f) + ((msg[20] & 0xf0) >> 4) * 10 + (msg[21] &0x0f) * 100;
-    if (msg[25] & 0x0f)
-        temp_raw = -temp_raw;
-    float temperature = temp_raw * 0.1f;
+    int chksum = ((0x100-msg[2])+(0x100-msg[3])+(0x100-msg[4])+(0x100-msg[5])+(0x100-msg[6])+(0x100-msg[7])+(0x100-msg[8])+(0x100-msg[9])+(0x100-msg[10])+(0x100-msg[11])+(0x100-msg[12])+(0x100-msg[13])+(0x100-msg[14])+(0x100-msg[15])+(0x100-msg[16])+(0x100-msg[17]))&0xff;
 
-    int humidity = (msg[22] & 0x0f) + ((msg[22] & 0xf0) >> 4) * 10;
+    if(chksum!=0x01) {
+    fprintf(stderr, "%s Parity wrong !!! \n", __func__);
+    return 0;
+    }
+    //temerature
 
-    float wind_direction_deg = ((msg[17] & 0xf0) >> 4) * 22.5f;
+    temp_raw = ((msg[12] & 0xf0) >> 4) * 100 + (msg[12] & 0x0f) * 10 + ((msg[13] & 0xf0) >> 4);
+    temperature = temp_raw * 0.1f ;
 
-    int gust_raw = (msg[16] & 0x0f) + ((msg[16] & 0xf0) >> 4) * 10 + (msg[15] & 0x0f) * 100;
-    float wind_gust = gust_raw * 0.1f;
+    if (temperature > 60)
+    temperature = temp_raw * 0.1f -100;
 
-    int wind_raw = (msg[18] & 0x0f) + ((msg[18] & 0xf0) >> 4) * 10 + (msg[17] & 0x0f) * 100;
-    float wind_avg = wind_raw * 0.1f;
+    humidity = (msg[14] & 0x0f) + ((msg[14] & 0xf0) >> 4) * 10;
 
-    int rain_raw = (msg[23] & 0x0f) + ((msg[23] & 0xf0) >> 4) * 10 + (msg[24] & 0x0f) * 100;
-    float rain = rain_raw * 0.1f;
+    float wind_direction_deg = ((msg[10] & 0xf0) >> 4) * 100 + (msg[10] & 0x0f) *10 + ((msg[11] &0xf0) >> 4 ) ;
+    int gust_raw = (0xff-(msg[7]))*10 +(0x0f-((msg[8] &0xf0) >> 4));
+    float wind_gust = gust_raw * 0.1f * 3.6;
 
-    data = data_make(
-            "model",            "",             DATA_STRING, "Bresser-5in1",
-            "id",               "",             DATA_INT,    sensor_id,
-            "temperature_C",    "Temperature",  DATA_FORMAT, "%.1f C", DATA_DOUBLE, temperature,
-            "humidity",         "Humidity",     DATA_INT, humidity,
-            _X("wind_max_m_s","wind_gust"),        "Wind Gust",    DATA_FORMAT, "%.1f m/s",DATA_DOUBLE, wind_gust,
-            _X("wind_avg_m_s","wind_speed"),       "Wind Speed",   DATA_FORMAT, "%.1f m/s",DATA_DOUBLE, wind_avg,
-            "wind_dir_deg",     "Direction",    DATA_FORMAT, "%.1f °",DATA_DOUBLE, wind_direction_deg,
-            "rain_mm",          "Rain",         DATA_FORMAT, "%.1f mm",DATA_DOUBLE, rain,
-            "mic",              "Integrity",    DATA_STRING, "CHECKSUM",
-            NULL);
+    int wind_raw = (0xff-(msg[9]))*10 +0x0f-(msg[8] & 0x0f);
+    float wind_avg = wind_raw * 0.1f * 3.6;
 
-    decoder_output_data(decoder, data);
+    if (msg[12] == 0xff){
 
-    return 1;
+        data = data_make(
+        "model", "", DATA_STRING, "Bresser-5in1",
+        _X("wind_max_m_s","wind_gust"), "Wind Gust", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_gust,
+        _X("wind_avg_m_s","wind_speed"), "Wind Speed", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_avg,
+        "wind_dir_deg", "Direction", DATA_FORMAT, "%.1f °",DATA_DOUBLE, wind_direction_deg,
+        "rain_mm", "Rain", DATA_FORMAT, "%.1f mm",DATA_DOUBLE, rain,
+        "mic", "Integrity", DATA_STRING, "CHECKSUM",
+        NULL);
+        decoder_output_data(decoder, data);
+        return 1;
+    } else {
+        data = data_make(
+        "model", "", DATA_STRING, "Bresser-5in1",
+        "temperature_C", "Temperature", DATA_FORMAT, "%.1f C", DATA_DOUBLE, temperature,
+        "humidity", "Humidity", DATA_INT, humidity,
+        _X("wind_max_m_s","wind_gust"), "Wind Gust", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_gust,
+        _X("wind_avg_m_s","wind_speed"), "Wind Speed", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_avg,
+        "wind_dir_deg", "Direction", DATA_FORMAT, "%.1f °",DATA_DOUBLE, wind_direction_deg,
+        "mic", "Integrity", DATA_STRING, "CHECKSUM",
+        NULL);
+        decoder_output_data(decoder, data);
+        return 1;
+    }
 }
 
 static char *output_fields[] = {
@@ -140,16 +158,16 @@ static char *output_fields[] = {
     "wind_dir_deg",
     "rain_mm",
     "mic",
-    NULL
+    NULL,
 };
 
 r_device bresser_5in1 = {
-    .name          = "Bresser Weather Center 5-in-1",
-    .modulation    = FSK_PULSE_PCM,
-    .short_width   = 124,
-    .long_width    = 124,
-    .reset_limit   = 25000,
-    .decode_fn     = &bresser_5in1_callback,
-    .disabled      = 0,
-    .fields        = output_fields,
+    .name = "Bresser Weather Center 5-in-1",
+    .modulation = FSK_PULSE_PCM,
+    .short_width = 122,
+    .long_width = 122,
+    .reset_limit = 2400,
+    .decode_fn = &bresser_6in1_callback,
+    .disabled = 0,
+    .fields = output_fields,
 };
