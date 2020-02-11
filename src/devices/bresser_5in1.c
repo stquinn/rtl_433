@@ -127,8 +127,8 @@ static int bresser_6in1_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 
         data = data_make(
         "model", "", DATA_STRING, "Bresser-5in1",
-        _X("wind_max_m_s","wind_gust"), "Wind Gust", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_gust,
-        _X("wind_avg_m_s","wind_speed"), "Wind Speed", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_avg,
+        "wind_gust", "Wind Gust", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_gust,
+        "wind_speed", "Wind Speed", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_avg,
         "wind_dir_deg", "Direction", DATA_FORMAT, "%.1f °",DATA_DOUBLE, wind_direction_deg,
         "rain_mm", "Rain", DATA_FORMAT, "%.1f mm",DATA_DOUBLE, rain,
         "mic", "Integrity", DATA_STRING, "CHECKSUM",
@@ -140,8 +140,8 @@ static int bresser_6in1_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         "model", "", DATA_STRING, "Bresser-5in1",
         "temperature_C", "Temperature", DATA_FORMAT, "%.1f C", DATA_DOUBLE, temperature,
         "humidity", "Humidity", DATA_INT, humidity,
-        _X("wind_max_m_s","wind_gust"), "Wind Gust", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_gust,
-        _X("wind_avg_m_s","wind_speed"), "Wind Speed", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_avg,
+        "wind_gust", "Wind Gust", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_gust,
+        "wind_speed", "Wind Speed", DATA_FORMAT, "%.1f km/h",DATA_DOUBLE, wind_avg,
         "wind_dir_deg", "Direction", DATA_FORMAT, "%.1f °",DATA_DOUBLE, wind_direction_deg,
         "mic", "Integrity", DATA_STRING, "CHECKSUM",
         NULL);
@@ -157,8 +157,8 @@ static char *output_fields[] = {
     "humidity",
     "wind_gust", // TODO: delete this
     "wind_speed", // TODO: delete this
-    "wind_max_m_s",
-    "wind_avg_m_s",
+    // "wind_max_m_s",
+    // "wind_avg_m_s",
     "wind_dir_deg",
     "rain_mm",
     "mic",
