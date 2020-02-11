@@ -91,7 +91,11 @@ static int bresser_6in1_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 
     if (msg[12] == 0xff)
     {
-        rain = ((((0xff-msg[13])&0x0f)*100)+((((0xff-msg[14])& 0xf0) >> 4) * 10 + ((0xff-msg[14]) & 0x0f) * 1 )) * 0.1f;
+         // fprintf(stderr, "%s:RAINFALL: %d %d %d \n", __func__, msg[13], msg[14], msg[15]);
+        // rain = ((((0x0f-msg[13])&0x0f)*100)+((((0xff-msg[14])& 0xf0) >> 4) * 10 + ((0xff-msg[14]) & 0x0f) * 1 )) * 0.1f;
+         int rain_raw = (0x0f-((msg[13] & 0xf0) >> 4)) * 1000 + (0x0f-(msg[13] & 0x0f))*100 + (0x0f-((msg[14] & 0xf0) >> 4)) * 10 + (0x0f-(msg[14] & 0x0f)) ;
+         rain = rain_raw *0.1f;
+         // fprintf(stderr, "%s:RAINFALL: raw: %d  actual: %f \n", __func__, rain_raw, rain);
     }
 
     //checksum
